@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	filterActive     bool
+	filterAll        bool
 	filterComplete   bool
 	filterDeleted    bool
 	filterInProgress bool
@@ -27,11 +27,11 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "cfn-list",
 		Short: "List AWS CloudFormation stacks",
-		Long:  "List AWS CloudFormation stacks with various filters",
+		Long:  "List AWS CloudFormation stacks with various filters. By default shows active stacks.",
 		Run:   run,
 	}
 
-	rootCmd.Flags().BoolVarP(&filterActive, "active", "a", false, "Filter active stacks (CREATE_COMPLETE, UPDATE_COMPLETE, etc.)")
+	rootCmd.Flags().BoolVarP(&filterAll, "all", "A", false, "Show all stacks (overrides other status filters)")
 	rootCmd.Flags().BoolVarP(&filterComplete, "complete", "c", false, "Filter complete stacks (all *_COMPLETE statuses)")
 	rootCmd.Flags().BoolVarP(&filterDeleted, "deleted", "d", false, "Filter deleted stacks (DELETE_* statuses)")
 	rootCmd.Flags().BoolVarP(&filterInProgress, "in-progress", "i", false, "Filter in-progress stacks (all *_IN_PROGRESS statuses)")
@@ -63,7 +63,7 @@ func run(cmd *cobra.Command, args []string) {
 	client := cloudformation.NewFromConfig(cfg)
 
 	// Build status filter for AWS API
-	statusFilters := buildStatusFilters(filterActive, filterComplete, filterDeleted, filterInProgress)
+	statusFilters := buildStatusFilters(filterAll, filterComplete, filterDeleted, filterInProgress)
 
 	// Get stacks from AWS with filters
 	stacks, err := listStacks(ctx, client, statusFilters, nameFilter)
@@ -114,15 +114,16 @@ func listStacks(ctx context.Context, client *cloudformation.Client, statusFilter
 	return allStacks, nil
 }
 
-func buildStatusFilters(active, complete, deleted, inProgress bool) []types.StackStatus {
+func buildStatusFilters(all, complete, deleted, inProgress bool) []types.StackStatus {
 	var filters []types.StackStatus
 
-	// If no filters specified, return nil to get default behavior (all except DELETE_COMPLETE)
-	if !active && !complete && !deleted && !inProgress {
+	// If --all is specified, return nil to get all stacks
+	if all {
 		return nil
 	}
 
-	if active {
+	// If no specific filters are set, default to active stacks
+	if !complete && !deleted && !inProgress {
 		filters = append(filters,
 			types.StackStatusCreateComplete,
 			types.StackStatusUpdateComplete,
@@ -131,6 +132,7 @@ func buildStatusFilters(active, complete, deleted, inProgress bool) []types.Stac
 			types.StackStatusImportComplete,
 			types.StackStatusImportRollbackComplete,
 		)
+		return filters
 	}
 
 	if complete {
