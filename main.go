@@ -26,6 +26,7 @@ var (
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "cfn-list",
+		Args:  cobra.MaximumNArgs(1),
 		Short: "List AWS CloudFormation stacks",
 		Long:  "List AWS CloudFormation stacks with various filters. By default shows active stacks.",
 		Run:   run,
@@ -46,6 +47,14 @@ func main() {
 }
 
 func run(cmd *cobra.Command, args []string) {
+	if len(args) > 0 && nameFilter == "" {
+		nameFilter = args[0]
+	} else if len(args) > 0 && nameFilter != "" {
+		fmt.Fprintf(os.Stderr, "Error: too many arguments\n")
+		cmd.Usage()
+		os.Exit(1)
+	}
+
 	ctx := context.Background()
 
 	// Load AWS config
