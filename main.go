@@ -32,7 +32,7 @@ func main() {
 		Use:   "cfn-list",
 		Args:  cobra.MaximumNArgs(1),
 		Short: "List AWS CloudFormation stacks",
-		Long:  "List AWS CloudFormation stacks with various filters. By default shows active stacks.",
+		Long:  "List AWS CloudFormation stacks with various filters. By default shows active and in-progress stacks.",
 		Run:   run,
 	}
 
@@ -148,15 +148,27 @@ func buildStatusFilters(all, complete, deleted, inProgress bool) []types.StackSt
 		return nil
 	}
 
-	// If no specific filters are set, default to active stacks
+	// If no specific filters are set, default to active + in-progress stacks
 	if !complete && !deleted && !inProgress {
 		filters = append(filters,
+			// Active/complete states
 			types.StackStatusCreateComplete,
 			types.StackStatusUpdateComplete,
 			types.StackStatusRollbackComplete,
 			types.StackStatusUpdateRollbackComplete,
 			types.StackStatusImportComplete,
 			types.StackStatusImportRollbackComplete,
+			// In-progress states
+			types.StackStatusCreateInProgress,
+			types.StackStatusDeleteInProgress,
+			types.StackStatusRollbackInProgress,
+			types.StackStatusUpdateInProgress,
+			types.StackStatusUpdateCompleteCleanupInProgress,
+			types.StackStatusUpdateRollbackInProgress,
+			types.StackStatusUpdateRollbackCompleteCleanupInProgress,
+			types.StackStatusReviewInProgress,
+			types.StackStatusImportInProgress,
+			types.StackStatusImportRollbackInProgress,
 		)
 		return filters
 	}
