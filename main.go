@@ -19,13 +19,16 @@ import (
 )
 
 var (
-	filterActive     bool
+	filterAll        bool
 	filterComplete   bool
 	filterDeleted    bool
 	filterInProgress bool
 	nameFilter       string
+	descContains     string
+	descNotContains  string
 	region           string
 	noHeaders        bool
+	namesOnly        bool
 )
 
 func main() {
@@ -90,8 +93,6 @@ func runList(cmd *cobra.Command, args []string) {
 		fmt.Println("No stacks found")
 		return
 	}
-
-	printStacks(noHeaders, stacks)
 }
 
 // ---------------------------------------------------------------------------
@@ -753,22 +754,36 @@ func listEvents(ctx context.Context, client *cloudformation.Client, stackName st
 	return all, nil
 }
 
-func buildStatusFilters(active, complete, deleted, inProgress bool) []types.StackStatus {
+func buildStatusFilters(all, complete, deleted, inProgress bool) []types.StackStatus {
 	var filters []types.StackStatus
 
 	if !active && !complete && !deleted && !inProgress {
 		return nil
 	}
 
-	if active {
+	// If no specific filters are set, default to active + in-progress stacks
+	if !complete && !deleted && !inProgress {
 		filters = append(filters,
+			// Active/complete states
 			types.StackStatusCreateComplete,
 			types.StackStatusUpdateComplete,
 			types.StackStatusRollbackComplete,
 			types.StackStatusUpdateRollbackComplete,
 			types.StackStatusImportComplete,
 			types.StackStatusImportRollbackComplete,
+			// In-progress states
+			types.StackStatusCreateInProgress,
+			types.StackStatusDeleteInProgress,
+			types.StackStatusRollbackInProgress,
+			types.StackStatusUpdateInProgress,
+			types.StackStatusUpdateCompleteCleanupInProgress,
+			types.StackStatusUpdateRollbackInProgress,
+			types.StackStatusUpdateRollbackCompleteCleanupInProgress,
+			types.StackStatusReviewInProgress,
+			types.StackStatusImportInProgress,
+			types.StackStatusImportRollbackInProgress,
 		)
+		return filters
 	}
 	if complete {
 		filters = append(filters,
