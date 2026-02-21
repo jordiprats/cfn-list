@@ -1,4 +1,4 @@
-module cfn-list
+module cfn
 
 go 1.25.0
 
