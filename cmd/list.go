@@ -135,12 +135,15 @@ func runResourceSearch(ctx context.Context, client *cloudformation.Client, stack
 
 	// Build search message (only show if not in names-only mode)
 	if !namesOnly {
-		searchMsg := fmt.Sprintf("Searching %d stacks", len(stacks))
-		if resourceType != "" {
-			searchMsg += fmt.Sprintf(" for resource type %q", resourceType)
-		}
-		if resourceName != "" {
-			searchMsg += fmt.Sprintf(" for resource name %q", resourceName)
+		searchMsg := fmt.Sprintf("Searching %d stacks for", len(stacks))
+		if resourceName != "" && resourceType != "" {
+			searchMsg += fmt.Sprintf(" resource %q of type %q", resourceName, resourceType)
+		} else if resourceName != "" {
+			searchMsg += fmt.Sprintf(" resource %q", resourceName)
+		} else if resourceType != "" {
+			searchMsg += fmt.Sprintf(" resources of type %q", resourceType)
+		} else {
+			searchMsg += " resources"
 		}
 		if len(propertyFilters) > 0 {
 			searchMsg += " with properties:"
@@ -177,12 +180,13 @@ func runResourceSearch(ctx context.Context, client *cloudformation.Client, stack
 
 	if len(matchingStackSummaries) == 0 {
 		if !namesOnly {
-			fmt.Printf("No stacks found")
-			if resourceType != "" {
-				fmt.Printf(" containing resource type %q", resourceType)
-			}
-			if resourceName != "" {
-				fmt.Printf(" containing resource name %q", resourceName)
+			fmt.Printf("No stacks found containing")
+			if resourceName != "" && resourceType != "" {
+				fmt.Printf(" resource %q of type %q", resourceName, resourceType)
+			} else if resourceName != "" {
+				fmt.Printf(" resource %q", resourceName)
+			} else if resourceType != "" {
+				fmt.Printf(" resources of type %q", resourceType)
 			}
 			if len(propertyFilters) > 0 {
 				fmt.Printf(" with properties:")
@@ -238,23 +242,22 @@ func searchStackTemplate(ctx context.Context, client *cloudformation.Client, sta
 	}
 
 	for logicalID, resourceData := range resources {
+		// Check resource name first (cheapest check) if specified
+		if resName != "" && !strings.Contains(logicalID, resName) {
+			continue
+		}
+
 		resourceMap, ok := resourceData.(map[string]interface{})
 		if !ok {
 			continue
 		}
 
-		// Filter by resource type if specified
-		currentType, ok := resourceMap["Type"].(string)
-		if !ok {
-			continue
-		}
-		if resType != "" && currentType != resType {
-			continue
-		}
-
-		// Filter by resource name (logical ID) if specified
-		if resName != "" && !strings.Contains(logicalID, resName) {
-			continue
+		// Check resource type second if specified
+		if resType != "" {
+			currentType, ok := resourceMap["Type"].(string)
+			if !ok || currentType != resType {
+				continue
+			}
 		}
 
 		// Check if properties match
