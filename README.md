@@ -61,7 +61,8 @@ cfn list --names-only             # Names only (pipeable)
 Search for stacks by resource type and properties. [Documentation](./docs/cfn_search.md)
 
 ```bash
-cfn search AWS::S3::Bucket
+cfn search AWS::S3::Bucket        # Search active stacks
+cfn search AWS::S3::Bucket --all  # Search all stacks
 cfn search AWS::ServiceCatalog::CloudFormationProvisionedProduct \
   --property ProductName=IAMRole \
   --property ProvisioningArtifactName=3.0.0
