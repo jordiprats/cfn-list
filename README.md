@@ -35,7 +35,7 @@ go install github.com/yourusername/cfn-list@latest
 cfn list
 
 # Search for specific resources
-cfn search AWS::S3::Bucket
+cfn list --type AWS::S3::Bucket
 
 # Monitor a deployment
 cfn tail my-stack
@@ -54,16 +54,11 @@ cfn list my-app                   # Filter by name
 cfn list --complete               # Only completed stacks
 cfn list --desc "production"      # Filter by description
 cfn list --names-only             # Names only (pipeable)
-```
 
-### `cfn search` - Search Templates
-
-Search for stacks by resource type and properties. [Documentation](./docs/cfn_search.md)
-
-```bash
-cfn search AWS::S3::Bucket        # Search active stacks
-cfn search AWS::S3::Bucket --all  # Search all stacks
-cfn search AWS::ServiceCatalog::CloudFormationProvisionedProduct \
+# Search for resources in templates
+cfn list --type AWS::S3::Bucket   # Search active stacks for S3 buckets
+cfn list --type AWS::S3::Bucket --all  # Search all stacks
+cfn list --type AWS::ServiceCatalog::CloudFormationProvisionedProduct \
   --property ProductName=IAMRole \
   --property ProvisioningArtifactName=3.0.0
 ```
@@ -145,7 +140,7 @@ Uses standard AWS credential configuration:
 
 **Find stacks with specific Service Catalog products:**
 ```bash
-cfn search AWS::ServiceCatalog::CloudFormationProvisionedProduct \
+cfn list --type AWS::ServiceCatalog::CloudFormationProvisionedProduct \
   --property ProductName=IAMRole \
   --property ProvisioningArtifactName=3.0.0
 ```
@@ -177,11 +172,7 @@ Root command and global options. [Documentation](./docs/cfn.md)
 
 ### `cfn list` - List Stacks
 
-List CloudFormation stacks with filtering options. [Documentation](./docs/cfn_list.md)
-
-### `cfn search` - Search Templates
-
-Search for stacks by resource type and properties. [Documentation](./docs/cfn_search.md)
+List CloudFormation stacks with filtering options, including deep search by resource type and properties. [Documentation](./docs/cfn_list.md)
 
 ### `cfn describe` - Stack Details
 
