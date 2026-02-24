@@ -37,6 +37,8 @@ func main() {
 		cmd.TailCmd(),
 		cmd.TemplateCmd(),
 		cmd.ValidateCmd(),
+		cmd.SearchCmd(),
+		cmd.GenDocsCmd(rootCmd),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
