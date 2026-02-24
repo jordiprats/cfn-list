@@ -33,7 +33,7 @@ func ListCmd() *cobra.Command {
 		Short: "List CloudFormation stacks",
 		Long: `List CloudFormation stacks. By default shows active and in-progress stacks.
 
-A name filter can be provided as a positional argument or via --name.
+A name filter can be provided as a positional argument.
 
 When resource filters (--type, --resource-name, --property) are specified, 
 performs a deep search of stack templates and shows matching resources.
@@ -61,36 +61,39 @@ Examples:
 	cmd.Flags().BoolVarP(&filterComplete, "complete", "c", false, "Filter complete stacks (*_COMPLETE statuses)")
 	cmd.Flags().BoolVarP(&filterDeleted, "deleted", "d", false, "Filter deleted stacks (DELETE_* statuses)")
 	cmd.Flags().BoolVarP(&filterInProgress, "in-progress", "i", false, "Filter in-progress stacks (*_IN_PROGRESS statuses)")
-	cmd.Flags().StringVarP(&nameFilter, "name", "n", "", "Filter stacks whose name contains this string (case-insensitive)")
 	cmd.Flags().StringVar(&descContains, "desc", "", "Filter stacks whose description contains this string (case-insensitive)")
 	cmd.Flags().StringVar(&descNotContains, "no-desc", "", "Exclude stacks whose description contains this string (case-insensitive)")
 	cmd.Flags().BoolVarP(&namesOnly, "names-only", "1", false, "Print only stack names, one per line")
 	cmd.Flags().StringVarP(&resourceType, "type", "t", "", "Search for resource type (e.g., AWS::S3::Bucket)")
-	cmd.Flags().StringVarP(&resourceName, "resource-name", "R", "", "Search for resource logical ID")
+	cmd.Flags().StringVarP(&resourceName, "resource-name", "n", "", "Search for resource logical ID")
 	cmd.Flags().StringArrayVarP(&properties, "property", "p", []string{}, "Search for resource property (format: key=value or nested.key=value)")
 
 	return cmd
 }
 
 func runList(cmd *cobra.Command, args []string) {
-	// Positional arg is a shorthand for --name
-	if len(args) > 0 && nameFilter == "" {
+	// Positional arg is the stack name filter
+	if len(args) > 0 {
 		nameFilter = args[0]
-	} else if len(args) > 0 && nameFilter != "" {
-		fatalf("Error: name filter specified both as argument and --name flag\n")
 	}
 
 	ctx := context.Background()
 	client := mustClient(ctx)
 
+	// Check if resource search is requested
+	isResourceSearch := resourceType != "" || resourceName != "" || len(properties) > 0
+
+	// For resource search, default to all stacks unless user specifies status filters
 	statusFilters := buildStatusFilters(filterAll, filterComplete, filterDeleted, filterInProgress)
+	if isResourceSearch && !filterAll && !filterComplete && !filterDeleted && !filterInProgress {
+		// No status filters specified and doing resource search - search all stacks (including DELETE_COMPLETE)
+		statusFilters = nil
+	}
+
 	stacks, err := listStacks(ctx, client, statusFilters, nameFilter, descContains, descNotContains)
 	if err != nil {
 		fatalf("failed to list stacks: %v\n", err)
 	}
-
-	// Check if resource search is requested
-	isResourceSearch := resourceType != "" || resourceName != "" || len(properties) > 0
 
 	if isResourceSearch {
 		runResourceSearch(ctx, client, stacks, namesOnly)
@@ -139,27 +142,31 @@ func runResourceSearch(ctx context.Context, client *cloudformation.Client, stack
 		if resourceName != "" {
 			searchMsg += fmt.Sprintf(" for resource name %q", resourceName)
 		}
+		if len(propertyFilters) > 0 {
+			searchMsg += " with properties:"
+			for key, value := range propertyFilters {
+				searchMsg += fmt.Sprintf(" %s=%q", key, value)
+			}
+		}
 		searchMsg += "..."
 		fmt.Fprintf(os.Stderr, "%s\n", searchMsg)
 	}
 
-	var matchingStacks []stackMatch
+	// Find stacks with matching resources
+	var matchingStackSummaries []types.StackSummary
 	for _, stack := range stacks {
 		if stack.StackName == nil {
 			continue
 		}
 
-		matches, err := searchStackTemplate(ctx, client, *stack.StackName, resourceType, resourceName, propertyFilters)
+		hasMatch, err := searchStackTemplate(ctx, client, *stack.StackName, resourceType, resourceName, propertyFilters)
 		if err != nil {
 			// Skip stacks we can't access
 			continue
 		}
 
-		if len(matches) > 0 {
-			matchingStacks = append(matchingStacks, stackMatch{
-				stackName: *stack.StackName,
-				resources: matches,
-			})
+		if hasMatch {
+			matchingStackSummaries = append(matchingStackSummaries, stack)
 		}
 	}
 
@@ -168,7 +175,7 @@ func runResourceSearch(ctx context.Context, client *cloudformation.Client, stack
 		fmt.Fprintf(os.Stderr, "\033[1A\033[2K")
 	}
 
-	if len(matchingStacks) == 0 {
+	if len(matchingStackSummaries) == 0 {
 		if !namesOnly {
 			fmt.Printf("No stacks found")
 			if resourceType != "" {
@@ -185,57 +192,34 @@ func runResourceSearch(ctx context.Context, client *cloudformation.Client, stack
 			}
 			fmt.Println()
 		}
-		return
+		os.Exit(1)
 	}
 
-	// Print results
+	// Print results using the same format as regular list
 	if namesOnly {
-		// In names-only mode, just print stack names
-		for _, match := range matchingStacks {
-			fmt.Println(match.stackName)
+		for _, stack := range matchingStackSummaries {
+			if stack.StackName != nil {
+				fmt.Println(*stack.StackName)
+			}
 		}
 	} else {
-		// Normal detailed output
-		fmt.Printf("Found %d stack(s) with matching resources:\n\n", len(matchingStacks))
-		for _, match := range matchingStacks {
-			fmt.Printf("Stack: %s\n", match.stackName)
-			for _, resource := range match.resources {
-				fmt.Printf("  - %s (%s)\n", resource.logicalID, resource.resourceType)
-				if len(resource.matchedProperties) > 0 {
-					for key, value := range resource.matchedProperties {
-						fmt.Printf("      %s: %v\n", key, value)
-					}
-				}
-			}
-			fmt.Println()
-		}
+		printStacks(noHeaders, matchingStackSummaries)
 	}
 }
 
-type stackMatch struct {
-	stackName string
-	resources []resourceMatch
-}
-
-type resourceMatch struct {
-	logicalID         string
-	resourceType      string
-	matchedProperties map[string]interface{}
-}
-
-func searchStackTemplate(ctx context.Context, client *cloudformation.Client, stackName, resType, resName string, propertyFilters map[string]string) ([]resourceMatch, error) {
+func searchStackTemplate(ctx context.Context, client *cloudformation.Client, stackName, resType, resName string, propertyFilters map[string]string) (bool, error) {
 	// Get template
 	output, err := client.GetTemplate(ctx, &cloudformation.GetTemplateInput{
 		StackName:     &stackName,
 		TemplateStage: types.TemplateStageOriginal,
 	})
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
 	body := getValue(output.TemplateBody)
 	if body == "" {
-		return nil, fmt.Errorf("empty template")
+		return false, fmt.Errorf("empty template")
 	}
 
 	// Parse template (try JSON first, then YAML)
@@ -243,17 +227,16 @@ func searchStackTemplate(ctx context.Context, client *cloudformation.Client, sta
 	if err := json.Unmarshal([]byte(body), &template); err != nil {
 		// Try YAML
 		if err := yaml.Unmarshal([]byte(body), &template); err != nil {
-			return nil, fmt.Errorf("failed to parse template: %v", err)
+			return false, fmt.Errorf("failed to parse template: %v", err)
 		}
 	}
 
 	// Search for resources
 	resources, ok := template["Resources"].(map[string]interface{})
 	if !ok {
-		return nil, nil
+		return false, nil
 	}
 
-	var matches []resourceMatch
 	for logicalID, resourceData := range resources {
 		resourceMap, ok := resourceData.(map[string]interface{})
 		if !ok {
@@ -281,26 +264,17 @@ func searchStackTemplate(ctx context.Context, client *cloudformation.Client, sta
 				continue
 			}
 
-			matched, matchedProps := checkProperties(properties, propertyFilters)
+			matched, _ := checkProperties(properties, propertyFilters)
 			if !matched {
 				continue
 			}
-
-			matches = append(matches, resourceMatch{
-				logicalID:         logicalID,
-				resourceType:      currentType,
-				matchedProperties: matchedProps,
-			})
-		} else {
-			// No property filters, just match the type and/or name
-			matches = append(matches, resourceMatch{
-				logicalID:    logicalID,
-				resourceType: currentType,
-			})
 		}
+
+		// Found a match
+		return true, nil
 	}
 
-	return matches, nil
+	return false, nil
 }
 
 func checkProperties(properties map[string]interface{}, filters map[string]string) (bool, map[string]interface{}) {
