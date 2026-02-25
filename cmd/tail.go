@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -38,6 +39,7 @@ func runTail(stackName string, interval time.Duration) {
 	// Seed: remember the timestamp of the most recent event so we only show new ones.
 	var since time.Time
 	var initialEvent *types.StackEvent
+	seenEventIDs := make(map[string]struct{})
 	{
 		events, err := listEvents(ctx, client, stackName, 1)
 		if err != nil {
@@ -46,6 +48,9 @@ func runTail(stackName string, interval time.Duration) {
 		if len(events) > 0 && events[0].Timestamp != nil {
 			initialEvent = &events[0]
 			since = *events[0].Timestamp
+			if id := getValue(events[0].EventId); id != "" {
+				seenEventIDs[id] = struct{}{}
+			}
 		}
 	}
 
@@ -79,24 +84,46 @@ func runTail(stackName string, interval time.Duration) {
 		case <-ticker.C:
 			events, err := listEvents(ctx, client, stackName, 0)
 			if err != nil {
+				if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+					continue
+				}
 				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 				continue
 			}
 
-			// Events are newest-first; collect those newer than `since`, then print oldest-first.
+			// Events are newest-first; collect those newer than `since`.
+			// Include equal-timestamp events when their EventId hasn't been seen yet.
 			var newEvents []types.StackEvent
 			for _, e := range events {
-				if e.Timestamp != nil && e.Timestamp.After(since) {
+				if e.Timestamp == nil {
+					continue
+				}
+
+				if e.Timestamp.After(since) {
 					newEvents = append(newEvents, e)
+					continue
+				}
+
+				if e.Timestamp.Equal(since) {
+					if id := getValue(e.EventId); id != "" {
+						if _, exists := seenEventIDs[id]; !exists {
+							newEvents = append(newEvents, e)
+						}
+					}
 				}
 			}
 
 			for i := len(newEvents) - 1; i >= 0; i-- {
 				e := newEvents[i]
+				if id := getValue(e.EventId); id != "" {
+					seenEventIDs[id] = struct{}{}
+				}
 				ts := ""
 				if e.Timestamp != nil {
 					ts = e.Timestamp.Format("2006-01-02 15:04:05")
-					since = *e.Timestamp
+					if e.Timestamp.After(since) {
+						since = *e.Timestamp
+					}
 				}
 				fmt.Printf("%-22s %-40s %-45s %-30s %s\n",
 					ts,
