@@ -37,12 +37,14 @@ func runTail(stackName string, interval time.Duration) {
 
 	// Seed: remember the timestamp of the most recent event so we only show new ones.
 	var since time.Time
+	var initialEvent *types.StackEvent
 	{
 		events, err := listEvents(ctx, client, stackName, 1)
 		if err != nil {
 			fatalf("failed to get initial events: %v\n", err)
 		}
 		if len(events) > 0 && events[0].Timestamp != nil {
+			initialEvent = &events[0]
 			since = *events[0].Timestamp
 		}
 	}
@@ -53,6 +55,17 @@ func runTail(stackName string, interval time.Duration) {
 		fmt.Printf("%-22s %-40s %-45s %-30s %s\n",
 			"──────────────────────", "────────────────────────────────────────",
 			"─────────────────────────────────────────────", "──────────────────────────────", "──────")
+	}
+
+	if initialEvent != nil {
+		ts := initialEvent.Timestamp.Format("2006-01-02 15:04:05")
+		fmt.Printf("%-22s %-40s %-45s %-30s %s\n",
+			ts,
+			truncate(getValue(initialEvent.LogicalResourceId), 40),
+			truncate(getValue(initialEvent.ResourceType), 45),
+			truncate(string(initialEvent.ResourceStatus), 30),
+			getValue(initialEvent.ResourceStatusReason),
+		)
 	}
 
 	ticker := time.NewTicker(interval)
