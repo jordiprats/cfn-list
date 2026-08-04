@@ -5,10 +5,10 @@ go 1.26.0
 require github.com/aws/aws-sdk-go-v2/service/cloudformation v1.75.2
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.43.2
+	github.com/aws/aws-sdk-go-v2 v1.43.3
 	github.com/aws/aws-sdk-go-v2/config v1.32.33
 	github.com/aws/aws-sdk-go-v2/service/cloudcontrol v1.32.2
-	github.com/aws/smithy-go v1.27.5
+	github.com/aws/smithy-go v1.27.6
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.36.3
